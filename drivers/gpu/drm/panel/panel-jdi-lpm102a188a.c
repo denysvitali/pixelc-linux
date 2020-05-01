@@ -22,6 +22,7 @@
 
 #include <drm/drm_print.h>
 #include <drm/drm_crtc.h>
+#include <drm/drm_device.h>
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_panel.h>
 
@@ -84,6 +85,30 @@ static int panel_jdi_write_display_brightness(struct panel_jdi *jdi)
 			MIPI_DCS_RSP_WRITE_DISPLAY_BRIGHTNESS, &data, 1);
 	if (ret < 1) {
 		DRM_INFO("failed to write display brightness: %d\n", ret);
+		return ret;
+	}
+
+	return 0;
+}
+
+static int jdi_set_addr_mode(struct panel_jdi *jdi)
+{
+	int ret;
+	u8 data;
+
+	data = 0;
+
+	ret = mipi_dsi_dcs_write(jdi->link1,
+			MIPI_DCS_SET_ADDRESS_MODE, &data, 1);
+	if (ret < 1) {
+		DRM_INFO("failed to write address mode: %d\n", ret);
+		return ret;
+	}
+
+	ret = mipi_dsi_dcs_write(jdi->link2,
+			MIPI_DCS_SET_ADDRESS_MODE, &data, 1);
+	if (ret < 1) {
+		DRM_INFO("failed to write address mode: %d\n", ret);
 		return ret;
 	}
 
@@ -339,15 +364,7 @@ static int panel_jdi_prepare(struct drm_panel *panel)
 		goto poweroff;
 	}
 
-	err = mipi_dsi_dcs_set_address_mode(jdi->link1, false, false, false,
-			false, false, false, false, false);
-	if (err < 0) {
-		dev_err(panel->dev, "failed to set address mode: %d\n", err);
-		goto poweroff;
-	}
-
-	err = mipi_dsi_dcs_set_address_mode(jdi->link2, false, false,
-			false, false, false, false, false, false);
+	err = jdi_set_addr_mode(jdi);
 	if (err < 0) {
 		dev_err(panel->dev, "failed to set address mode: %d\n", err);
 		goto poweroff;
@@ -452,11 +469,12 @@ static const struct drm_display_mode default_mode = {
 	.vrefresh = 60,
 };
 
-static int panel_jdi_get_modes(struct drm_panel *panel)
+static int panel_jdi_get_modes(struct drm_panel *panel,
+			       struct drm_connector *connector)
 {
 	struct drm_display_mode *mode;
 
-	mode = drm_mode_duplicate(panel->drm, &default_mode);
+	mode = drm_mode_duplicate(connector->dev, &default_mode);
 	if (!mode) {
 		DRM_INFO("failed to add mode %ux%ux@%u\n",
 			default_mode.hdisplay, default_mode.vdisplay,
@@ -466,11 +484,11 @@ static int panel_jdi_get_modes(struct drm_panel *panel)
 
 	drm_mode_set_name(mode);
 
-	drm_mode_probed_add(panel->connector, mode);
+	drm_mode_probed_add(connector, mode);
 
-	panel->connector->display_info.width_mm = 211;
-	panel->connector->display_info.height_mm = 148;
-	panel->connector->display_info.bpc = 8;
+	connector->display_info.width_mm = 211;
+	connector->display_info.height_mm = 148;
+	connector->display_info.bpc = 8;
 
 	return 1;
 }
@@ -644,22 +662,11 @@ static int jdi_panel_add(struct panel_jdi *jdi)
 	}
 
 	drm_panel_init(&jdi->base, &jdi->link1->dev, &panel_jdi_funcs, DRM_MODE_CONNECTOR_DSI);
-	err = drm_panel_add(&jdi->base);
-
-	if (err < 0) {
-		DRM_INFO("drm_panel_add failed: %d\n", err);
-		goto put_backlight;
-	}
+	return drm_panel_add(&jdi->base);
 
 	panel_jdi_debugfs_init(jdi);
 
 	return 0;
-
-put_backlight:
-	if (jdi->backlight)
-		put_device(&jdi->backlight->dev);
-
-	return err;
 }
 
 static void jdi_panel_del(struct panel_jdi *jdi)
@@ -745,7 +752,6 @@ static int panel_jdi_dsi_remove(struct mipi_dsi_device *dsi)
 	if (err < 0)
 		dev_err(&dsi->dev, "failed to detach from DSI host: %d\n", err);
 
-	drm_panel_detach(&jdi->base);
 	jdi_panel_del(jdi);
 
 	return 0;

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0
 /dts-v1/;
 
+#include <dt-bindings/input/linux-event-codes.h>
 #include <dt-bindings/input/input.h>
 #include <dt-bindings/mfd/max77620.h>
+#include <dt-bindings/gpio/tegra-gpio.h>
 #include <dt-bindings/pinctrl/pinctrl-tegra.h>
 
 #include "tegra210.dtsi"
@@ -16,21 +18,29 @@
 		     "google,smaug", "nvidia,tegra210";
 
 	aliases {
+		rtc0 = "/i2c@7000d000/pmic@3c";
+		rtc1 = "/rtc@7000e000";
 		serial0 = &uarta;
+		serial1 = &uartc;
+		serial2 = &uartd;
+		sdhci0 = "sdhci@700b0600";
+		sdhci1 = "sdhci@700b0200";
 	};
 
 	chosen {
-		bootargs = "earlycon";
-		stdout-path = "serial0:115200n8";
+		bootargs = "cros_legacy init=/init rw fbcon loglevel=0 debug earlyprintk drm.atomic=1 no_console_suspend firmware_class.path=/lib/firmware";
+                stdout-path = "serial0:115200n8";
 	};
 
 	memory {
 		device_type = "memory";
-		reg = <0x0 0x80000000 0x0 0xc0000000>;
+		reg = < 0x0 0x80000000 0x0 0x7d200000 >,
+		      < 0x1 0x00000000 0x0 0x40000000 >;
 	};
 
 	host1x@50000000 {
-   	dsia: dsi@54300000 {
+
+		dsia: dsi@54300000 {
 			status = "okay";
 			avdd-dsi-csi-supply = <&vdd_dsi_csi>;
 			#address-cells = <2>;
@@ -63,50 +73,33 @@
 				backlight = <&backlight>;
 			};
 		};
+
 		sor@54540000 {
 			status = "disabled";
 		};
+
 		sor@54580000 {
 			status = "disabled";
 		};
+
 		dpaux@54040000 {
 			status = "disabled";
 			vdd-supply = <&pp3300>;
 		};
+
 		dpaux@545c0000 {
 			status = "okay";
 			vdd-supply = <&pp3300>;
 		};
+
 		i2c@546c0000 {
 			status = "okay";
 		};
 	};
 
-	// GEN1_I2C
-	i2c1: i2c@7000c000 {
-		compatible = "nvidia,tegra210-i2c", "nvidia,tegra124-i2c";
-		reg = <0x0 0x7000c000 0x0 0x100>;
-		interrupts = <GIC_SPI 38 IRQ_TYPE_LEVEL_HIGH>;
-		#address-cells = <1>;
-		#size-cells = <0>;
-		clocks = <&tegra_car TEGRA210_CLK_I2C1>;
-		clock-names = "div-clk";
-		clock-frequency = <1000000>;
-		resets = <&tegra_car 12>;
-		reset-names = "i2c";
-		dmas = <&apbdma 21>, <&apbdma 21>;
-		dma-names = "rx", "tx";
-		nvidia,controller-id = <0>;
-		clock-frequency = <400000>;
-
-		touchscreen: i2c-hid-dev@20 {
-			compatible = "hid-over-i2c";
-			reg = <0x20>;
-			status = "okay";
-			hid-descr-addr = <0x0020>;
-			interrupt-parent = <&gpio>;
-			interrupts = <TEGRA_GPIO(X, 1) IRQ_TYPE_EDGE_FALLING>;
-		};
+	gpu@57000000 {
+		status = "okay";
+		vdd-supply = <&max77621_gpu>;
 	};
 
 	serial@70006000 {
@@ -116,20 +109,25 @@
 	serial@70006200 {
 		compatible = "nvidia,tegra210-hsuart", "nvidia,tegra30-hsuart";
 		status = "okay";
-		vdd-supply = <&max77620>;
 	};
 
-  	gpu@57000000 {
+	serial@70006300 {
+		compatible = "nvidia,tegra124-hsuart", "nvidia,tegra30-hsuart";
 		status = "okay";
-		vdd-supply = <&max77620>;
-	};
 
+		bluetooth {
+			compatible = "brcm,bcm4354-bt";
+			shutdown-gpios = <&gpio TEGRA_GPIO(H, 4) GPIO_ACTIVE_HIGH>;
+			host-wakeup-gpios = <&gpio TEGRA_GPIO(H, 5) GPIO_ACTIVE_LOW>;
+			device-wakeup-gpios = <&gpio TEGRA_GPIO(H, 3) GPIO_ACTIVE_HIGH>;
+		};
+	};
 
 	pinmux: pinmux@700008d4 {
-		pinctrl-names = "boot";
-		pinctrl-0 = <&state_boot>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinmux_default>;
 
-		state_boot: pinmux {
+		pinmux_default: common {
 			pex_l0_rst_n_pa0 {
 				nvidia,pins = "pex_l0_rst_n_pa0";
 				nvidia,function = "rsvd1";
@@ -1395,6 +1393,24 @@
 		};
 	};
 
+	serial@70006000 {
+		status = "okay";
+	};
+
+	i2c@7000c000 {
+		status = "okay";
+		clock-frequency = <1000000>;
+
+		touchscreen: i2c-hid-dev@20 {
+				compatible = "hid-over-i2c";
+				reg = <0x20>;
+				status = "okay";
+				hid-descr-addr = <0x0020>;
+				interrupt-parent = <&gpio>;
+				interrupts = <TEGRA_GPIO(X, 1) IRQ_TYPE_EDGE_FALLING>;
+		};
+	};
+
 	i2c@7000c400 {
 		status = "okay";
 		clock-frequency = <1000000>;
@@ -1419,6 +1435,22 @@
 					battery-name = "battery";
 				};
 			};
+
+			usbc_extcon: extcon {
+				compatible = "google,extcon-usbc-cros-ec";
+				google,usb-port-id = <0>;
+			};
+		};
+	};
+
+	i2c@7000c500 {
+		status = "okay";
+		clock-frequency = <400000>;
+		tpm@20 {
+			compatible = "infineon,slb9645tt";
+			reg = <0x20>;
+			powered-while-suspended;
+			status = "okay";
 		};
 	};
 
@@ -1443,6 +1475,23 @@
 			maxim,enable-etr;
 			maxim,enable-gpio = <&max77620 5 0>;
 			maxim,externally-enable;
+		};
+
+		max77621_gpu: max77621@1c {
+			compatible = "maxim,max77621";
+			reg = <0x1c>;
+			interrupt-parent = <&gpio>;
+			interrupts = <TEGRA_GPIO(A, 6) IRQ_TYPE_LEVEL_LOW>;
+			regulator-name = "PPVAR_GPU";
+			regulator-min-microvolt = <800000>;
+			regulator-max-microvolt = <1150000>;
+			regulator-ramp-delay = <12500>;
+			maxim,externally-enable;
+			maxim,enable-gpio = <&max77620 6 0>;
+			maxim,dvs-default-state = <1>;
+			maxim,disable-etr;
+			maxim,enable-active-discharge;
+			maxim,enable-bias-control;
 		};
 
 		max77620: max77620@3c {
@@ -1491,6 +1540,11 @@
 				};
 			};
 
+			watchdog {
+				maxim,wdt-timeout = <16>;
+				maxim,wdt-clear-time = <13>;
+				status = "disabled";
+			};
 			fps {
 				fps0 {
 					maxim,shutdown-fps-time-period-us = <5120>;
@@ -1518,6 +1572,10 @@
 					regulator-name = "PPVAR_SOC";
 					regulator-min-microvolt = <825000>;
 					regulator-max-microvolt = <1125000>;
+					regulator-enable-ramp-delay = <146>;
+					regulator-disable-ramp-delay = <4080>;
+					regulator-ramp-delay = <27500>;
+					regulator-ramp-delay-scale = <300>;
 					regulator-always-on;
 					regulator-boot-on;
 					maxim,active-fps-source = <MAX77620_FPS_SRC_1>;
@@ -1529,6 +1587,10 @@
 					regulator-name = "PP1100";
 					regulator-min-microvolt = <1125000>;
 					regulator-max-microvolt = <1125000>;
+					regulator-enable-ramp-delay = <130>;
+					regulator-disable-ramp-delay = <145800>;
+					regulator-ramp-delay = <27500>;
+					regulator-ramp-delay-scale = <300>;
 					regulator-always-on;
 					regulator-boot-on;
 					maxim,active-fps-source = <MAX77620_FPS_SRC_0>;
@@ -1540,6 +1602,10 @@
 					regulator-name = "PP1350";
 					regulator-min-microvolt = <1350000>;
 					regulator-max-microvolt = <1350000>;
+					regulator-enable-ramp-delay = <176>;
+					regulator-disable-ramp-delay = <32000>;
+					regulator-ramp-delay = <27500>;
+					regulator-ramp-delay-scale = <350>;
 					regulator-always-on;
 					regulator-boot-on;
 					maxim,active-fps-source = <MAX77620_FPS_SRC_NONE>;
@@ -1551,6 +1617,10 @@
 					regulator-name = "PP1800";
 					regulator-min-microvolt = <1800000>;
 					regulator-max-microvolt = <1800000>;
+					regulator-enable-ramp-delay = <242>;
+					regulator-disable-ramp-delay = <118000>;
+					regulator-ramp-delay = <27500>;
+					regulator-ramp-delay-scale = <360>;
 					regulator-always-on;
 					regulator-boot-on;
 					maxim,active-fps-source = <MAX77620_FPS_SRC_0>;
@@ -1558,13 +1628,16 @@
 					maxim,active-fps-power-down-slot = <3>;
 				};
 
-				pp1200_avdd: ldo0 {
-					regulator-name = "PP1200_AVDD";
+				vdd_sys_1v2: ldo0 {
+					regulator-name = "AVDD_SYS_1V2";
 					regulator-min-microvolt = <1200000>;
 					regulator-max-microvolt = <1200000>;
 					regulator-enable-ramp-delay = <26>;
+					regulator-disable-ramp-delay = <626>;
 					regulator-ramp-delay = <100000>;
+					regulator-ramp-delay-scale = <200>;
 					regulator-boot-on;
+					regulator-always-on;
 					maxim,active-fps-source = <MAX77620_FPS_SRC_NONE>;
 					maxim,active-fps-power-up-slot = <0>;
 					maxim,active-fps-power-down-slot = <7>;
@@ -1575,7 +1648,9 @@
 					regulator-min-microvolt = <1200000>;
 					regulator-max-microvolt = <1200000>;
 					regulator-enable-ramp-delay = <22>;
+					regulator-disable-ramp-delay = <630>;
 					regulator-ramp-delay = <100000>;
+					regulator-ramp-delay-scale = <200>;
 					maxim,active-fps-source = <MAX77620_FPS_SRC_NONE>;
 					maxim,active-fps-power-up-slot = <0>;
 					maxim,active-fps-power-down-slot = <7>;
@@ -1586,7 +1661,9 @@
 					regulator-min-microvolt = <1800000>;
 					regulator-max-microvolt = <1800000>;
 					regulator-enable-ramp-delay = <62>;
+					regulator-disable-ramp-delay = <650>;
 					regulator-ramp-delay = <11000>;
+					regulator-ramp-delay-scale = <200>;
 					regulator-always-on;
 					regulator-boot-on;
 					maxim,active-fps-source = <MAX77620_FPS_SRC_NONE>;
@@ -1599,7 +1676,9 @@
 					regulator-min-microvolt = <2800000>;
 					regulator-max-microvolt = <2800000>;
 					regulator-enable-ramp-delay = <50>;
+					regulator-disable-ramp-delay = <1110>;
 					regulator-ramp-delay = <100000>;
+					regulator-ramp-delay-scale = <200>;
 					maxim,active-fps-source = <MAX77620_FPS_SRC_NONE>;
 					maxim,active-fps-power-up-slot = <0>;
 					maxim,active-fps-power-down-slot = <7>;
@@ -1610,7 +1689,9 @@
 					regulator-min-microvolt = <850000>;
 					regulator-max-microvolt = <850000>;
 					regulator-enable-ramp-delay = <22>;
+					regulator-disable-ramp-delay = <610>;
 					regulator-ramp-delay = <100000>;
+					regulator-ramp-delay-scale = <200>;
 					regulator-always-on; /* Check this */
 					regulator-boot-on;
 					maxim,active-fps-source = <MAX77620_FPS_SRC_0>;
@@ -1623,7 +1704,9 @@
 					regulator-min-microvolt = <2800000>;
 					regulator-max-microvolt = <2800000>;
 					regulator-enable-ramp-delay = <62>;
+					regulator-disable-ramp-delay = <640>;
 					regulator-ramp-delay = <100000>;
+					regulator-ramp-delay-scale = <200>;
 					maxim,active-fps-source = <MAX77620_FPS_SRC_NONE>;
 					maxim,active-fps-power-up-slot = <0>;
 					maxim,active-fps-power-down-slot = <7>;
@@ -1646,7 +1729,9 @@
 					regulator-min-microvolt = <1050000>;
 					regulator-max-microvolt = <1050000>;
 					regulator-enable-ramp-delay = <24>;
+					regulator-disable-ramp-delay = <2768>;
 					regulator-ramp-delay = <100000>;
+					regulator-ramp-delay-scale = <200>;
 					regulator-always-on;
 					regulator-boot-on;
 					maxim,active-fps-source = <MAX77620_FPS_SRC_1>;
@@ -1659,7 +1744,9 @@
 					regulator-min-microvolt = <1050000>;
 					regulator-max-microvolt = <1050000>;
 					regulator-enable-ramp-delay = <22>;
+					regulator-disable-ramp-delay = <1160>;
 					regulator-ramp-delay = <100000>;
+					regulator-ramp-delay-scale = <200>;
 					regulator-boot-on;
 					maxim,active-fps-source = <MAX77620_FPS_SRC_NONE>;
 					maxim,active-fps-power-up-slot = <0>;
@@ -1669,7 +1756,6 @@
 		};
 	};
 
-	
 	i2c@7000d100 {
 		status = "okay";
 		clock-frequency = <400000>;
@@ -1679,7 +1765,7 @@
 			reg = <0x1a>;
 			interrupt-parent = <&gpio>;
 			interrupts = <TEGRA_GPIO(E, 6) IRQ_TYPE_LEVEL_LOW>;
-			clocks = <&tegra_pmc TEGRA_PMC_CLK_OUT_2>;
+			clocks = <&tegra_car TEGRA210_CLK_CLK_OUT_2>;
 			clock-names = "mclk";
 
 			nuvoton,jkdet-enable;
@@ -1697,7 +1783,6 @@
 			nuvoton,jack-eject-debounce = <7>;
 			status = "okay";
 		};
-
 
 		backlight: lp8557-backlight@2c {
 				status = "okay";
@@ -1730,7 +1815,7 @@
 				};
 		};
 
-    	rt5677: audio-codec@2d {
+		audio-codec@2d {
 			compatible = "realtek,rt5677";
 			reg = <0x2d>;
 			interrupt-parent = <&gpio>;
@@ -1739,46 +1824,10 @@
 			gpio-controller;
 			#gpio-cells = <2>;
 			status = "okay";
-    	};
-
-		backlight: lp8557-backlight@2c {
-			status = "okay";
-			compatible = "ti,lp8557";
-			reg = <0x2c>;
-			power-supply = <&pplcd_vdd>;
-			enable-supply = <&pp1800_lcdio>;
-			bl-name = "lp8557-backlight";
-			dev-ctrl = /bits/ 8 <0x01>;
-			init-brt = /bits/ 8 <0xFF>;
-			/* Full scale current, 20mA */
-			rom_11h {
-					rom-addr = /bits/ 8 <0x11>;
-					rom-val = /bits/ 8 <0x05>;
-			};
-			/* Frequency = 4.9kHz, magic undocumented val */
-			rom_12h {
-					rom-addr = /bits/ 8 <0x12>;
-					rom-val = /bits/ 8 <0x29>;
-			};
-			/* Boost freq = 1MHz, BComp option = 1 */
-			rom_13h {
-					rom-addr = /bits/ 8 <0x13>;
-					rom-val = /bits/ 8 <0x03>;
-			};
-			/* 4V OV, 6 output LED string enabled */
-			rom_14h {
-					rom-addr = /bits/ 8 <0x14>;
-					rom-val = /bits/ 8 <0xbf>;
-			};
-		};
-
-    	audio-jack@3b {
-			// TODO: Describe TI TS3A227E
-			reg = <0x3b>;
-			status = "disabled";
 		};
 
 		tmp451: temperature-sensor@4c {
+			status = "okay";
 			compatible = "ti,tmp451";
 			reg = <0x4c>;
 			interrupt-parent = <&gpio>;
@@ -1862,19 +1911,23 @@
 		};
 	};
 
-	sdhci@700b0200 { /* WiFi/BT on this bus */
+	sdhci1: sdhci@700b0200 { /* WiFi/BT on this bus */
 		power-gpios = <&gpio TEGRA_GPIO(H, 1) GPIO_ACTIVE_HIGH>;
+		vqmmc-supply = <&pp1800>;
 		vmmc-supply = <&pp3300>;
-		no-1-8-v;
 		bus-width = <4>;
 		keep-power-in-suspend;
 		non-removable;
 		status = "okay";
 	};
 
-	sdhci@700b0600 {
+	sdhci0: sdhci@700b0600 {
 		bus-width = <8>;
 		non-removable;
+		mmc-hs200-1_8v;
+		vqmmc-supply = <&pp1800>;
+		vmmc-supply = <&pp3300>;
+		keep-power-in-suspend;
 		status = "okay";
 	};
 
@@ -1917,19 +1970,32 @@
 
 	cpus {
 		cpu@0 {
+			compatible = "arm,cortex-a57";
+			vdd-cpu-supply = <&max77621_cpu>;
 			enable-method = "psci";
+			next-level-cache = <&L2>;
 		};
 
 		cpu@1 {
+			compatible = "arm,cortex-a57";
 			enable-method = "psci";
+			next-level-cache = <&L2>;
 		};
 
 		cpu@2 {
+			compatible = "arm,cortex-a57";
 			enable-method = "psci";
+			next-level-cache = <&L2>;
 		};
 
 		cpu@3 {
+			compatible = "arm,cortex-a57";
 			enable-method = "psci";
+			next-level-cache = <&L2>;
+		};
+
+		L2: l2-cache {
+			compatible = "cache";
 		};
 
 		idle-states {
@@ -1942,6 +2008,7 @@
 
 	gpio-keys {
 		compatible = "gpio-keys";
+		status = "okay";
 
 		power {
 			label = "Power";
@@ -1951,7 +2018,7 @@
 			wakeup-source;
 		};
 
-		lid {
+/*		lid {
 			label = "Lid";
 			gpios = <&gpio TEGRA_GPIO(B, 4) GPIO_ACTIVE_LOW>;
 			linux,input-type = <EV_SW>;
@@ -1966,17 +2033,19 @@
 			linux,code = <SW_TABLET_MODE>;
 			wakeup-source;
 		};
-
+*/
 		volume_down {
 			label = "Volume Down";
 			gpios = <&gpio TEGRA_GPIO(X, 7) GPIO_ACTIVE_LOW>;
 			linux,code = <KEY_VOLUMEDOWN>;
+			wakeup-source;
 		};
 
 		volume_up {
 			label = "Volume Up";
 			gpios = <&gpio TEGRA_GPIO(M, 4) GPIO_ACTIVE_LOW>;
 			linux,code = <KEY_VOLUMEUP>;
+			wakeup-source;
 		};
 	};
 
@@ -2003,6 +2072,7 @@
 			regulator-min-microvolt = <4400000>;
 			regulator-max-microvolt = <4400000>;
 			regulator-always-on;
+			regulator-boot-on;
 		};
 
 		pplcd_vdd: regulator@1 {
@@ -2014,6 +2084,7 @@
 			gpio = <&gpio TEGRA_GPIO(V, 4) 0>;
 			enable-active-high;
 			regulator-boot-on;
+			vin-supply = <&ppvar_sys>;
 		};
 
 		pp3000_always: regulator@2 {
@@ -2023,6 +2094,7 @@
 			regulator-min-microvolt = <3000000>;
 			regulator-max-microvolt = <3000000>;
 			regulator-always-on;
+			vin-supply = <&ppvar_sys>;
 		};
 
 		pp3300: regulator@3 {
@@ -2034,6 +2106,7 @@
 			regulator-boot-on;
 			regulator-always-on;
 			enable-active-high;
+			vin-supply = <&ppvar_sys>;
 		};
 
 		pp5000: regulator@4 {
@@ -2043,6 +2116,7 @@
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
 			regulator-always-on;
+			regulator-boot-on;
 		};
 
 		pp1800_lcdio: regulator@5 {
@@ -2072,15 +2146,17 @@
 			regulator-name = "USBC_VBUS";
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
+			vin-supply = <&ppvar_sys>;
 		};
 
 		vdd_dsi_csi: regulator@8 {
-				compatible = "regulator-fixed";
-				reg = <8>;
-				regulator-name = "AVDD_DSI_CSI_1V2";
-				regulator-min-microvolt = <1200000>;
-				regulator-max-microvolt = <1200000>;
-				vin-supply = <&pp1200_avdd>;
+			compatible = "regulator-fixed";
+			reg = <8>;
+			regulator-name = "AVDD_DSI_CSI_1V2";
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+			vin-supply = <&vdd_sys_1v2>;
 		};
+
 	};
 };
